@@ -56,7 +56,7 @@ struct grid_ops {
   void (*get_bounds)(struct _openslide_grid *grid,
                      struct bounds *bounds);
   bool (*paint_region)(struct _openslide_grid *grid,
-                       cairo_t *cr, void *arg,
+                       uint32_t *cr, void *arg,
                        double x, double y,
                        struct _openslide_level *level,
                        int32_t w, int32_t h,
@@ -67,6 +67,14 @@ struct grid_ops {
 typedef bool (*read_tiles_callback_fn)(struct _openslide_grid *grid,
                                        struct region *region,
                                        cairo_t *cr,
+                                       struct _openslide_level *level,
+                                       int64_t tile_col, int64_t tile_row,
+                                       void *arg,
+                                       GError **err);
+
+typedef bool (*read_tiles_custom_callback_fn)(struct _openslide_grid *grid,
+                                       struct region *region,
+                                       uint32_t *dest,
                                        struct _openslide_level *level,
                                        int64_t tile_col, int64_t tile_row,
                                        void *arg,
@@ -176,11 +184,11 @@ static void compute_region(struct _openslide_grid *grid,
   region->offset_y = y - (region->start_tile_y * grid->tile_advance_y);
 }
 
-static bool read_tiles(cairo_t *cr,
+static bool read_tiles(uint32_t *dest,
                        struct _openslide_level *level,
                        struct _openslide_grid *grid,
                        struct region *region,
-                       read_tiles_callback_fn callback,
+                       read_tiles_custom_callback_fn callback,
                        void *arg,
                        GError **err) {
   //g_debug("offset: %g %g, advance: %g %g", region->offset_x, region->offset_y, grid->tile_advance_x, grid->tile_advance_y);
@@ -202,32 +210,39 @@ static bool read_tiles(cairo_t *cr,
   //g_debug("start: %"PRId64" %"PRId64, region->start_tile_x, region->start_tile_y);
   //g_debug("end: %"PRId64" %"PRId64, region->end_tile_x, region->end_tile_y);
 
-  cairo_matrix_t matrix;
-  cairo_get_matrix(cr, &matrix);
+  // cairo_matrix_t matrix;
+  // cairo_get_matrix(cr, &matrix);
+  uint32_t *tmp = dest;
+  printf("(start_tile_x, end_tile_x), (start_tile_y, end_tile_y), (%d, %d) (%d, %d)\n", region->start_tile_x, region->end_tile_x, region->start_tile_y, region->end_tile_y);
 
   int64_t tile_y = region->end_tile_y - 1;
-
+  int tile_no = 0;
   while (tile_y >= region->start_tile_y) {
-    double translate_y = ((tile_y - region->start_tile_y) *
-                          grid->tile_advance_y) - region->offset_y;
+    int64_t translate_y = ((tile_y - region->start_tile_y) *
+                          (int64_t)grid->tile_advance_y) - (int64_t)region->offset_y;
     int64_t tile_x = region->end_tile_x - 1;
 
     while (tile_x >= region->start_tile_x) {
-      double translate_x = ((tile_x - region->start_tile_x) *
-                            grid->tile_advance_x) - region->offset_x;
+      fprintf(stderr, "tile no: %d ", tile_no++);
+      int64_t translate_x = ((tile_x - region->start_tile_x) *
+                            (int64_t)grid->tile_advance_x) - (int64_t)region->offset_x;
       //      g_debug("read_tiles %"PRId64" %"PRId64, tile_x, tile_y);
-      cairo_translate(cr, translate_x, translate_y);
-      bool success = callback(grid, region, cr,
+      // cairo_translate(cr, translate_x, translate_y);
+      dest += (translate_y * (int64_t)region->w + translate_x);
+      // fprintf(stderr,"  start callback  ");
+      bool success = callback(grid, region, dest,
                               level, tile_x, tile_y,
                               arg, err);
-      cairo_set_matrix(cr, &matrix);
+      // cairo_set_matrix(cr, &matrix);
+      dest = tmp;
+      fprintf(stderr,"  end callback  succes:%d\n", success);
+
       if (!success) {
         return false;
       }
 
       tile_x--;
     }
-
     tile_y--;
   }
 
@@ -268,30 +283,30 @@ static void simple_get_bounds(struct _openslide_grid *_grid,
 
 static bool simple_read_tile(struct _openslide_grid *_grid,
                              struct region *region G_GNUC_UNUSED,
-                             cairo_t *cr,
+                             uint32_t *dest,
                              struct _openslide_level *level,
                              int64_t tile_col, int64_t tile_row,
                              void *arg,
                              GError **err) {
   struct simple_grid *grid = (struct simple_grid *) _grid;
-
-  if (!grid->read_tile(grid->base.osr, cr, level,
-                       tile_col, tile_row, arg, err)) {
+  // fprintf(stderr, "in simple_read_tile\n");
+  if (!grid->read_tile(grid->base.osr, dest, level,
+                       tile_col, tile_row, arg, err, region->w)) {
     return false;
   }
-  if (_openslide_debug(OPENSLIDE_DEBUG_TILES)) {
-    char *coordinates = g_strdup_printf("%"PRId64", %"PRId64,
-                                        tile_col, tile_row);
-    label_tile(cr, COLOR_TILE,
-               grid->base.tile_advance_x, grid->base.tile_advance_y,
-               coordinates);
-    g_free(coordinates);
-  }
+  // if (_openslide_debug(OPENSLIDE_DEBUG_TILES)) {
+  //   char *coordinates = g_strdup_printf("%"PRId64", %"PRId64,
+  //                                       tile_col, tile_row);
+  //   label_tile(cr, COLOR_TILE,
+  //              grid->base.tile_advance_x, grid->base.tile_advance_y,
+  //              coordinates);
+  //   g_free(coordinates);
+  // }
   return true;
 }
 
 static bool simple_paint_region(struct _openslide_grid *_grid,
-                                cairo_t *cr,
+                                uint32_t *dest,
                                 void *arg,
                                 double x, double y,
                                 struct _openslide_level *level,
@@ -299,7 +314,7 @@ static bool simple_paint_region(struct _openslide_grid *_grid,
                                 GError **err) {
   struct simple_grid *grid = (struct simple_grid *) _grid;
   struct region region;
-
+  fprintf(stderr,"in simple_paint_region\n");
   compute_region(_grid, x, y, w, h, &region);
 
   // check if completely outside grid
@@ -311,28 +326,32 @@ static bool simple_paint_region(struct _openslide_grid *_grid,
   }
 
   // save
-  cairo_matrix_t matrix;
-  cairo_get_matrix(cr, &matrix);
+  uint32_t *tmp = dest;
+  // cairo_matrix_t matrix;
+  // cairo_get_matrix(cr, &matrix);
 
   // bound on left/top
   int64_t skipped_tiles_x = -MIN(region.start_tile_x, 0);
   int64_t skipped_tiles_y = -MIN(region.start_tile_y, 0);
-  cairo_translate(cr,
-                  skipped_tiles_x * grid->base.tile_advance_x,
-                  skipped_tiles_y * grid->base.tile_advance_y);
+  // cairo_translate(cr,
+  //                 skipped_tiles_x * grid->base.tile_advance_x,
+  //                 skipped_tiles_y * grid->base.tile_advance_y);
+  dest += skipped_tiles_y * (int)(grid->base.tile_advance_y)*w + 
+          skipped_tiles_x * (int)(grid->base.tile_advance_x);
   region.start_tile_x += skipped_tiles_x;
   region.start_tile_y += skipped_tiles_y;
 
   // bound on right/bottom
   region.end_tile_x = MIN(region.end_tile_x, grid->tiles_across);
   region.end_tile_y = MIN(region.end_tile_y, grid->tiles_down);
-
+  fprintf(stderr,"start read_tiles\n");
   // read
-  bool result = read_tiles(cr, level, _grid, &region,
+  bool result = read_tiles(dest, level, _grid, &region,
                            simple_read_tile, arg, err);
+  fprintf(stderr,"end read_tiles success:%d\n", result);
 
   // restore
-  cairo_set_matrix(cr, &matrix);
+  dest = tmp;
 
   return result;
 }
@@ -880,13 +899,14 @@ void _openslide_grid_get_bounds(struct _openslide_grid *grid,
 }
 
 bool _openslide_grid_paint_region(struct _openslide_grid *grid,
-                                  cairo_t *cr,
+                                  void *dest,
                                   void *arg,
                                   double x, double y,
                                   struct _openslide_level *level,
                                   int32_t w, int32_t h,
                                   GError **err) {
-  return grid->ops->paint_region(grid, cr, arg, x, y, level, w, h, err);
+  fprintf(stderr,"start simple_paint_region\n");
+  return grid->ops->paint_region(grid, dest, arg, x, y, level, w, h, err);
 }
 
 void _openslide_grid_destroy(struct _openslide_grid *grid) {

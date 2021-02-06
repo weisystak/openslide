@@ -480,27 +480,14 @@ void openslide_cancel_prefetch_hint(openslide_t *osr G_GNUC_UNUSED,
 }
 
 static bool read_region(openslide_t *osr,
-			cairo_t *cr,
+			uint32_t *dest,
 			int64_t x, int64_t y,
 			int32_t level,
 			int64_t w, int64_t h,
 			GError **err) {
   bool success = true;
 
-  // save the old pattern, it's the only thing push/pop won't restore
-  cairo_pattern_t *old_source = cairo_get_source(cr);
-  cairo_pattern_reference(old_source);
-
-  // push, so that saturate works with all sorts of backends
-  cairo_push_group(cr);
-
-  // clear to set the bounds of the group (seems to be a recent cairo bug)
-  cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-  cairo_rectangle(cr, 0, 0, w, h);
-  cairo_fill(cr);
-
-  // saturate those seams away!
-  cairo_set_operator(cr, CAIRO_OPERATOR_SATURATE);
+  uint32_t * tmp = dest;
 
   if (level_in_range(osr, level)) {
     struct _openslide_level *l = osr->levels[level];
@@ -519,24 +506,19 @@ static bool read_region(openslide_t *osr,
       y = 0;
       h -= ty;
     }
-    cairo_translate(cr, tx, ty);
+    // cairo_translate(cr, tx, ty);
+    dest += ty * w + tx;
 
+    printf("start read_region\n");
     // paint
     if (w > 0 && h > 0) {
-      success = osr->ops->paint_region(osr, cr, x, y, l, w, h, err);
+      success = osr->ops->paint_region(osr, dest, x, y, l, w, h, err);
     }
+    printf("  end read_region success:%d/n", success);
+    
   }
 
-  cairo_pop_group_to_source(cr);
-
-  if (success) {
-    // commit, nothing went wrong
-    cairo_paint(cr);
-  }
-
-  // restore old source
-  cairo_set_source(cr, old_source);
-  cairo_pattern_destroy(old_source);
+  dest = tmp;
 
   return success;
 }
@@ -574,56 +556,21 @@ void openslide_read_region(openslide_t *osr,
     return;
   }
 
-  // Break the work into smaller pieces if the region is large, because:
-  // 1. Cairo will not allow surfaces larger than 32767 pixels on a side.
-  // 2. cairo_push_group() creates an intermediate surface backed by a
-  //    pixman_image_t, and Pixman requires that every byte of that image
-  //    be addressable in 31 bits.
-  // 3. We would like to constrain the intermediate surface to a reasonable
-  //    amount of RAM.
-  const int64_t d = 4096;
-  double ds = openslide_get_level_downsample(osr, level);
-  for (int64_t row = 0; row < (h + d - 1) / d; row++) {
-    for (int64_t col = 0; col < (w + d - 1) / d; col++) {
-      // calculate surface coordinates and size
-      int64_t sx = x + col * d * ds;     // level 0 plane
-      int64_t sy = y + row * d * ds;     // level 0 plane
-      int64_t sw = MIN(w - col * d, d);  // level plane
-      int64_t sh = MIN(h - row * d, d);  // level plane
 
-      // create the cairo surface for the dest
-      cairo_surface_t *surface;
-      if (dest) {
-        surface = cairo_image_surface_create_for_data(
-                (unsigned char *) (dest + w * row * d + col * d),
-                CAIRO_FORMAT_ARGB32, sw, sh, w * 4);
-      } else {
-        // nil surface
-        surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 0, 0);
-      }
+  // double ds = openslide_get_level_downsample(osr, level);
 
-      // create the cairo context
-      cairo_t *cr = cairo_create(surface);
-      cairo_surface_destroy(surface);
 
-      // paint
-      if (!read_region(osr, cr, sx, sy, level, sw, sh, &tmp_err)) {
-        cairo_destroy(cr);
-        goto OUT;
-      }
 
-      // done
-      if (!_openslide_check_cairo_status(cr, &tmp_err)) {
-        cairo_destroy(cr);
-        goto OUT;
-      }
-
-      cairo_destroy(cr);
-    }
+  // paint
+  if (!read_region(osr, dest, x, y, level, w, h, &tmp_err)) {
+    goto OUT;
   }
+
+
 
 OUT:
   if (tmp_err) {
+    printf("error!!\n");
     _openslide_propagate_error(osr, tmp_err);
     if (dest) {
       // ensure we don't return a partial result

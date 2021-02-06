@@ -188,11 +188,11 @@ static bool decode_tile(struct level *l,
 }
 
 static bool read_tile(openslide_t *osr,
-		      cairo_t *cr,
+		      uint32_t *dest,
 		      struct _openslide_level *level,
 		      int64_t tile_col, int64_t tile_row,
 		      void *arg,
-		      GError **err) {
+		      GError **err, int32_t w) {
   struct level *l = (struct level *) level;
   struct _openslide_tiff_level *tiffl = &l->tiffl;
   TIFF *tiff = arg;
@@ -213,13 +213,13 @@ static bool read_tile(openslide_t *osr,
       return false;
     }
 
-    // clip, if necessary
-    if (!_openslide_tiff_clip_tile(tiffl, tiledata,
-                                   tile_col, tile_row,
-                                   err)) {
-      g_slice_free1(tw * th * 4, tiledata);
-      return false;
-    }
+    // // clip, if necessary
+    // if (!_openslide_tiff_clip_tile(tiffl, tiledata,
+    //                                tile_col, tile_row,
+    //                                err)) {
+    //   g_slice_free1(tw * th * 4, tiledata);
+    //   return false;
+    // }
 
     // put it in the cache
     _openslide_cache_put(osr->cache, level, tile_col, tile_row,
@@ -228,13 +228,46 @@ static bool read_tile(openslide_t *osr,
   }
 
   // draw it
+  if(tile_col == 15 && (tile_row == 18 || tile_row <=2))
+  {
+
+  fprintf(stderr, "drawing tile\n" );
   cairo_surface_t *surface = cairo_image_surface_create_for_data((unsigned char *) tiledata,
 								 CAIRO_FORMAT_ARGB32,
 								 tw, th,
 								 tw * 4);
-  cairo_set_source_surface(cr, surface, 0, 0);
+  char *filename = malloc(30);
+  sprintf(filename, "tile_col%ld_row%ld.png", tile_col, tile_row);
+  cairo_surface_write_to_png(surface, filename);
+  free(filename);
+  // cairo_set_source_surface(cr, surface, 0, 0);
   cairo_surface_destroy(surface);
-  cairo_paint(cr);
+  }
+  // cairo_paint(cr);
+  uint32_t *tmp = dest;
+  uint32_t * src = (uint32_t *) tiledata;
+  // fprintf(stderr, "start copy\n");
+
+  int64_t clip_w = tiffl->image_w - tile_col * tiffl->tile_w;
+  int64_t clip_h = tiffl->image_h - tile_row * tiffl->tile_h;
+  // printf("tw %ld, th %ld\n", tw, th);
+  printf("tile_col: %d, tile_row: %d\n", tile_col, tile_row);
+  int64_t ww = tw;
+  tw = MIN(tw, clip_w);
+  th = MIN(th, clip_h);
+  // printf("w %ld, h %ld\n", tiffl->image_w, tiffl->image_h);
+  printf("tw %ld, th %ld\n", tw, th);
+  for(int i = 0; i < th; i++) {
+    dest = tmp + i * w;
+    for(int j = 0; j < tw; j++)
+    {
+      // fprintf(stderr, "idx: %d\n", i*tw+j);
+      *dest = src[i*ww + j];
+      dest++;
+
+    }
+  }
+  // fprintf(stderr, "end copy\n");
 
   // done with the cache entry, release it
   _openslide_cache_entry_unref(cache_entry);
@@ -242,7 +275,7 @@ static bool read_tile(openslide_t *osr,
   return true;
 }
 
-static bool paint_region(openslide_t *osr, cairo_t *cr,
+static bool paint_region(openslide_t *osr, uint32_t *dest,
 			 int64_t x, int64_t y,
 			 struct _openslide_level *level,
 			 int32_t w, int32_t h,
@@ -255,7 +288,7 @@ static bool paint_region(openslide_t *osr, cairo_t *cr,
     return false;
   }
 
-  bool success = _openslide_grid_paint_region(l->grid, cr, tiff,
+  bool success = _openslide_grid_paint_region(l->grid, dest, tiff,
                                               x / l->base.downsample,
                                               y / l->base.downsample,
                                               level, w, h,

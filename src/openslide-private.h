@@ -87,7 +87,7 @@ struct _openslide_level {
 
 /* the function pointer structure for backends */
 struct _openslide_ops {
-  bool (*paint_region)(openslide_t *osr, cairo_t *cr,
+  bool (*paint_region)(openslide_t *osr, void *cr,
 		       int64_t x, int64_t y,
 		       struct _openslide_level *level,
 		       int32_t w, int32_t h,
@@ -174,11 +174,11 @@ bool _openslide_clip_tile(uint32_t *tiledata,
 struct _openslide_grid;
 
 typedef bool (*_openslide_grid_simple_read_fn)(openslide_t *osr,
-                                               cairo_t *cr,
+                                               uint32_t *cr,
                                                struct _openslide_level *level,
                                                int64_t tile_col, int64_t tile_row,
                                                void *arg,
-                                               GError **err);
+                                               GError **err, int32_t w);
 
 typedef bool (*_openslide_grid_tilemap_read_fn)(openslide_t *osr,
                                                 cairo_t *cr,
@@ -233,7 +233,7 @@ void _openslide_grid_get_bounds(struct _openslide_grid *grid,
                                 double *w, double *h);
 
 bool _openslide_grid_paint_region(struct _openslide_grid *grid,
-                                  cairo_t *cr,
+                                  void *cr,
                                   void *arg,
                                   double x, double y,
                                   struct _openslide_level *level,
