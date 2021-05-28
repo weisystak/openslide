@@ -226,8 +226,8 @@ static bool read_tile(openslide_t *osr,
 			 tiledata, tw * th * 4,
 			 &cache_entry);
   }
-
-  // draw it
+/*
+  // draw it for debug
   if(tile_col == 15 && (tile_row == 18 || tile_row <=2))
   {
 
@@ -243,6 +243,7 @@ static bool read_tile(openslide_t *osr,
   // cairo_set_source_surface(cr, surface, 0, 0);
   cairo_surface_destroy(surface);
   }
+*/
   // cairo_paint(cr);
   uint32_t *tmp = dest;
   uint32_t * src = (uint32_t *) tiledata;
@@ -251,12 +252,12 @@ static bool read_tile(openslide_t *osr,
   int64_t clip_w = tiffl->image_w - tile_col * tiffl->tile_w;
   int64_t clip_h = tiffl->image_h - tile_row * tiffl->tile_h;
   // printf("tw %ld, th %ld\n", tw, th);
-  printf("tile_col: %d, tile_row: %d\n", tile_col, tile_row);
+  // printf("tile_col: %d, tile_row: %d\n", tile_col, tile_row);
   int64_t ww = tw;
   tw = MIN(tw, clip_w);
   th = MIN(th, clip_h);
   // printf("w %ld, h %ld\n", tiffl->image_w, tiffl->image_h);
-  printf("tw %ld, th %ld\n", tw, th);
+  // printf("tw %ld, th %ld\n", tw, th);
   for(int i = 0; i < th; i++) {
     dest = tmp + i * w;
     for(int j = 0; j < tw; j++)

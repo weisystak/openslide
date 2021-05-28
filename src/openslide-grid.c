@@ -213,7 +213,7 @@ static bool read_tiles(uint32_t *dest,
   // cairo_matrix_t matrix;
   // cairo_get_matrix(cr, &matrix);
   uint32_t *tmp = dest;
-  printf("(start_tile_x, end_tile_x), (start_tile_y, end_tile_y), (%d, %d) (%d, %d)\n", region->start_tile_x, region->end_tile_x, region->start_tile_y, region->end_tile_y);
+  // printf("(start_tile_x, end_tile_x), (start_tile_y, end_tile_y), (%d, %d) (%d, %d)\n", region->start_tile_x, region->end_tile_x, region->start_tile_y, region->end_tile_y);
 
   int64_t tile_y = region->end_tile_y - 1;
   int tile_no = 0;
@@ -235,7 +235,7 @@ static bool read_tiles(uint32_t *dest,
                               arg, err);
       // cairo_set_matrix(cr, &matrix);
       dest = tmp;
-      fprintf(stderr,"  end callback  succes:%d\n", success);
+      // fprintf(stderr,"  end callback  succes:%d\n", success);
 
       if (!success) {
         return false;
