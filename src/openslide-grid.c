@@ -223,7 +223,7 @@ static bool read_tiles(uint32_t *dest,
     int64_t tile_x = region->end_tile_x - 1;
 
     while (tile_x >= region->start_tile_x) {
-      fprintf(stderr, "tile no: %d ", tile_no++);
+      // fprintf(stderr, "tile no: %d ", tile_no++);
       int64_t translate_x = ((tile_x - region->start_tile_x) *
                             (int64_t)grid->tile_advance_x) - (int64_t)region->offset_x;
       //      g_debug("read_tiles %"PRId64" %"PRId64, tile_x, tile_y);
